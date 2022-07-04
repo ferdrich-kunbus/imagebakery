@@ -7,11 +7,6 @@ usage () {
   -h, --help		Print the usage page'
 }
 
-if [ "$#" != 1 ] ; then
-	usage;
-	exit 1
-fi
-
 if [ ! -x "$(which curl)" ]; then
 	echo 1>&1 "Error: Command curl not found."
 	exit 1
@@ -130,7 +125,19 @@ if [ $imgsize -lt 3900000000 ] ; then
 	bcount=$(echo "($disksize-$imgsize)/$secsize" | bc )
 	dd if=/dev/zero count=$bcount bs=$secsize >> "$1"
 	$PARTED "$1" resizepart 2 "$((disksize-1))"B
-	losetup "$LOOPDEVICE" "$1"
+	losetup -P "$LOOPDEVICE" "$1"
+
+  PARTITIONS=$(lsblk --raw --output "MAJ:MIN" --noheadings ${LOOPDEVICE} | tail -n +2)
+  COUNTER=1
+  for i in $PARTITIONS; do
+    MAJ=$(echo $i | cut -d: -f1)
+    MIN=$(echo $i | cut -d: -f2)
+    if [ ! -e "${LOOPDEVICE}p${COUNTER}" ]; then mknod ${LOOPDEVICE}p${COUNTER} b $MAJ $MIN; fi
+    COUNTER=$((COUNTER + 1))
+  done
+ 
+  ls -l /dev/loop*
+  fdisk -l "$LOOPDEVICE"
 	partprobe "$LOOPDEVICE"
 	resize2fs "$LOOPDEVICE"p2
 	e2fsck -p -f "$LOOPDEVICE"p2
@@ -140,6 +147,7 @@ fi
 
 # mount ext4 + FAT filesystems
 losetup "$LOOPDEVICE" "$1"
+ls -l /dev/loop*
 partprobe "$LOOPDEVICE"
 mount "$LOOPDEVICE"p2 "$IMAGEDIR"
 mount "$LOOPDEVICE"p1 "$IMAGEDIR/boot"
